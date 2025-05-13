@@ -168,15 +168,29 @@ Now the encrypted message is decrypted using the private key.
 ---
 
 ## Step 4: Digital Signatures
+We can also create a digital signature with a private key and verify it with the public key.
+
 Here we also learn how a signed message digest could be used to guarantee the integrity of a message. Signing the digest instead of the message itself gives much better efficiency.
 
-If you want to encrypt a message using the private key, the keyword you should look for in the API is sign, and the output is commonly called as a signature:
+A message digest is a fixed-size, unique fingerprint of a message, created using a hash function (such as SHA-256). It represents the contents of the message in a compact form. If the message changes, even slightly, the digest will also change — making it a reliable way to detect tampering.
+* Hashes (SHA-256): Hash functions like SHA-256 convert any input message into a fixed-length output (digest). These are one-way functions — you cannot recover the original message from the digest — and any change in the input will produce a different output.
 
-Conversely, if you want to decrypt the output signature, the keyword in the API is verify. There will be no output here if the verification succeeds (the decrypted signature matches the initial message), but a VerficationError will be raised if otherwise.
-But don’t be fooled! Verification is a decryption, and signing is an encryption. They just have different names that are tied to their purpose.
+If you want to encrypt a message using the private key, the keyword you should look for in the API is `sign`, and the output is commonly called a **signature**.
+
+Conversely, if you want to decrypt the output signature, the keyword in the API is `verify`. There will be no output if the verification succeeds (i.e., the decrypted signature matches the initial digest), but a VerificationError will be raised if it fails.
+
+But don’t be fooled! **Verification is a form of decryption**, and **signing is a form of encryption**. They just have different names that reflect their specific purpose.
+
+We can also create a digital signature with a private key and verify it with the public key.
 
 
 ### Step 4.1: Sign a message with the private key
+In this step, we use the private RSA key to generate a digital signature for the message. Instead of signing the full message directly, we sign a message digest — a compact, unique fingerprint of the message produced using a hash function (SHA-256). This improves performance and ensures message integrity.
+ * The `.sign()` function then encrypts that digest with your private key.
+
+We also utilise PSS padding, which injects randomness into the signature process, ensuring that the same message signed multiple times produces different outputs. This enhances security by preventing signature replay attacks.
+
+The resulting output is a digital signature, which proves that the message was created by the owner of the private key and that the message has not been altered.
 
 ```python
 signature = private_key.sign(
@@ -193,6 +207,65 @@ print("Digital Signature:", signature)
 This generates a signature that proves the message is authentic and untampered.
 
 ### Step 4.2: Verify the signature with the public key
+Now we use the public key to verify that the signature came from the corresponding private key and that the message was not altered.
+
+Verification works by decrypting the signature to retrieve the original message digest and comparing it to a newly computed digest of the message. If they match, the verification is successful.
+
+#### Example (successful verification):
+
+```python
+try:
+    public_key.verify(
+        signature,
+        message,
+        padding.PSS(
+            mgf=padding.MGF1(hashes.SHA256()),
+            salt_length=padding.PSS.MAX_LENGTH
+        ),
+        hashes.SHA256()
+    )
+    print("Signature is VALID.")
+except:
+    print("Signature is INVALID.")
+```
+
+This verifies that the signature is valid. If the message is unchanged, the verification succeeds.
+
+#### Example (failed verification due to message modification):
+
+If the original message is:
+
+```python
+message = b"Encrypt me with RSA"
+```
+
+But the message is modified (e.g., changing one letter):
+
+```python
+modified_message = b"Encrypt me with rsa"
+```
+
+Trying to verify it:
+
+```python
+public_key.verify(
+    signature,
+    modified_message,
+    padding.PSS(
+        mgf=padding.MGF1(hashes.SHA256()),
+        salt_length=padding.PSS.MAX_LENGTH
+    ),
+    hashes.SHA256()
+)
+```
+
+Will raise a `cryptography.exceptions.InvalidSignature` error, because the digest of `modified_message` does not match the one recovered from the signature. Even a tiny change in the message causes verification to fail.
+
+Now we use the public key to verify that the signature came from the corresponding private key and that the message was not altered.
+
+Verification works by decrypting the signature to retrieve the original message digest and comparing it to a newly computed digest of the message. If they match, the verification is successful.
+
+If the message was modified — even by one character — the computed digest will differ from the original one, and verification will fail.
 
 ```python
 try:
@@ -212,11 +285,10 @@ except:
 
 This verifies that the signature is valid. If the message is modified, verification will fail.
 
-
 ---
 ## Step 5: Encrypting and Decrypting Files with Symmetric Encryption
 
-You can also use Fernet to encrypt and decrypt files — not just text.
+You can also use Fernet to encrypt and decrypt files — not just text. This is useful for securely storing or transmitting sensitive files.
 
 ### Step 5.1: Save a text file to encrypt
 
@@ -225,16 +297,17 @@ with open("sample.txt", "w") as f:
     f.write("This is some top secret content in a file.")
 ```
 
-This creates a file named `sample.txt` that we will encrypt.
+This creates a file named `sample.txt` that we will encrypt. You can check its contents by opening it directly in Colab or printing its content after reading.
 
 ### Step 5.2: Read the file content as bytes
 
 ```python
 with open("sample.txt", "rb") as f:
     file_data = f.read()
+print("Original file content:", file_data.decode())
 ```
 
-Files need to be read in binary mode (`rb`) for encryption.
+We read the file in binary mode (`rb`) and print its content to confirm what's inside.
 
 ### Step 5.3: Encrypt the file content
 
@@ -242,11 +315,25 @@ Files need to be read in binary mode (`rb`) for encryption.
 encrypted_data = cipher.encrypt(file_data)
 with open("sample.encrypted", "wb") as f:
     f.write(encrypted_data)
+print("Encrypted file content (bytes):", encrypted_data)
 ```
 
-This encrypts the content and saves it to a new file called `sample.encrypted`.
+This encrypts the content using the symmetric Fernet key and stores it in `sample.encrypted`. The printed output shows how unreadable the encrypted version is.
 
 ### Step 5.4: Decrypt the encrypted file
+
+```python
+with open("sample.encrypted", "rb") as f:
+    encrypted_file_data = f.read()
+
+decrypted_data = cipher.decrypt(encrypted_file_data)
+with open("sample_decrypted.txt", "wb") as f:
+    f.write(decrypted_data)
+
+print("Decrypted file content:", decrypted_data.decode())
+```
+
+This reads the encrypted file back, decrypts the content, writes the original text into a new file named `sample_decrypted.txt`, and confirms by printing the recovered content.
 
 ```python
 with open("sample.encrypted", "rb") as f:
